@@ -29,21 +29,7 @@ type Puntos = Int
 -- Funciones útiles
 between n m x = elem x [n .. m]
 
-maximoSegun f = foldl1 (mayorSegun f)
-mayorSegun f a b
-  | f a > f b = a
-  | otherwise = b
-
 type Palo = Habilidad -> Tiro
-
-cambiarVelocidad :: (Int -> Int) -> Tiro -> Tiro 
-cambiarVelocidad f tiro = tiro {velocidad = f (velocidad tiro)}
-
-cambiarAltura :: (Int -> Int) -> Tiro -> Tiro 
-cambiarAltura f tiro = tiro {altura = f (altura tiro)}
-
-cambiarPrecision :: (Int -> Int) -> Tiro -> Tiro 
-cambiarPrecision f tiro = tiro {precision = f (precision tiro)}
 
 putter :: Palo
 putter habilidad = crearTiro 10 0 ((precisionJugador habilidad) *2)
@@ -57,14 +43,103 @@ hierros n habilidad = crearTiro ((fuerzaJugador habilidad) *n) (min 0 (n-3)) ((p
 crearTiro :: Int -> Int -> Int -> Tiro
 crearTiro velocidad altura precision = UnTiro {velocidad = velocidad, precision = precision , altura = altura}
 
-palos = [putter, madera,hierros 1, hierros 2, hierros 3, hierros 4 , hierros 5, hierros 6, hierros 7 ,hierros 8, hierros 9 ,hierros 10]
+--palos = [putter, madera,hierros 1, hierros 2, hierros 3, hierros 4 , hierros 5, hierros 6, hierros 7 ,hierros 8, hierros 9 ,hierros 10]
+palos :: [Palo]
+palos = [putter , madera] ++ map hierros [1..10]
 
 golpe :: Jugador -> Palo -> Tiro
-golpe jugador palo = (palo.habilidad) jugador
+golpe jugador palo = palo (habilidad jugador)
 
 ---------------------3
+{- OTRO
+tiroDetenido = UnTiro 0 0 0
 
---type Obstaculo = Tiro -> Tiro
+obstaculoSuperableSi :: (Tiro -> Bool) -> (Tiro -> Tiro) -> Obstaculo
+obstaculoSuperableSi condicion efecto tiroOriginal
+  | condicion tiroOriginal = efecto tiroOriginal
+  | otherwise = tiroDetenido
+
+type Obstaculo = Tiro -> Tiro
+
+tunelConRampita :: Obstaculo
+tunelConRampita = obstaculoSuperableSi superaTunelConRampita efectoTunelConRampita
+
+superaTunelConRampita :: Tiro -> Bool
+superaTunelConRampita tiro = precision tiro > 90 && vaAlRasDelSuelo tiro
+
+efectoTunelConRampita :: Tiro -> Tiro
+efectoTunelConRampita tiro = UnTiro {velocidad = velocidad tiro * 2, precision = 100, altura = 0}
+
+vaAlRasDelSuelo = (==0).altura
+
+laguna :: Int -> Obstaculo
+laguna largo = obstaculoSuperableSi superaLaguna (efectoLaguna largo)
+
+superaLaguna :: Tiro -> Bool
+superaLaguna tiro = velocidad tiro > 80 && (between 1 5.altura) tiro
+efectoLaguna :: Int -> Tiro -> Tiro
+efectoLaguna largo tiroOriginal = tiroOriginal {altura = altura tiroOriginal `div` largo}
+
+hoyo :: Obstaculo
+hoyo = obstaculoSuperableSi superaHoyo efectoHoyo
+superaHoyo tiro = (between 5 20.velocidad) tiro && vaAlRasDelSuelo tiro
+efectoHoyo _ = tiroDetenido
+-}
+
+data Obstaculo = UnObstaculo {
+  puedeSuperar :: Tiro -> Bool,
+  efectoLuegoDeSuperar :: Tiro -> Tiro
+  }
+
+intentarSuperarObstaculo :: Obstaculo -> Tiro -> Tiro
+intentarSuperarObstaculo obstaculo tiroOriginal
+  | (puedeSuperar obstaculo) tiroOriginal = (efectoLuegoDeSuperar obstaculo) tiroOriginal
+  | otherwise = tiroDetenido
+
+tunelConRampita :: Obstaculo
+tunelConRampita = UnObstaculo superaTunelConRampita efectoTunelConRampita
+
+tiroDetenido = UnTiro 0 0 0
+
+superaTunelConRampita :: Tiro -> Bool
+superaTunelConRampita tiro = precision tiro > 90 && vaAlRasDelSuelo tiro
+
+vaAlRasDelSuelo = (== 0).altura
+
+efectoTunelConRampita :: Tiro -> Tiro
+efectoTunelConRampita tiroOriginal = UnTiro {
+  velocidad = velocidad tiroOriginal *2,
+  precision = 100,
+  altura = 0 }
+
+laguna :: Int -> Obstaculo
+laguna largo = UnObstaculo superaLaguna (efectoLaguna largo)
+
+superaLaguna :: Tiro -> Bool
+superaLaguna tiro = velocidad tiro > 80 && (between 1 5 . altura) tiro
+efectoLaguna :: Int -> Tiro -> Tiro
+efectoLaguna largo tiroOriginal = tiroOriginal {
+    altura = altura tiroOriginal `div` largo
+  }
+
+hoyo :: Obstaculo
+hoyo = UnObstaculo superaHoyo efectoHoyo
+
+superaHoyo :: Tiro -> Bool
+superaHoyo tiro = (between 5 20 . velocidad) tiro && vaAlRasDelSuelo tiro && precision tiro > 95
+efectoHoyo :: Tiro -> Tiro
+efectoHoyo _ = tiroDetenido
+
+
+{- MAL
+cambiarVelocidad :: (Int -> Int) -> Tiro -> Tiro 
+cambiarVelocidad f tiro = tiro {velocidad = f (velocidad tiro)}
+
+cambiarAltura :: (Int -> Int) -> Tiro -> Tiro 
+cambiarAltura f tiro = tiro {altura = f (altura tiro)}
+
+cambiarPrecision :: (Int -> Int) -> Tiro -> Tiro 
+cambiarPrecision f tiro = tiro {precision = f (precision tiro)}
 
 data Obs = Hoyo | Tunel | Laguna {largoLaguna :: Int} deriving (Show, Eq)
 
@@ -79,66 +154,52 @@ modificarTiro obstaculo tiro
     |pasaObstaculo (Laguna largoLaguna) tiro = cambiarAltura (div largoLaguna) tiro
     |otherwise = quedaEnCero tiro
 
---tunelConRampita :: Obstaculo
---tunelConRampita tiro 
---   |precision tiro > 90 = (cambiarVelocidad (*2) . cambiarPrecision (\_ -> 100). cambiarAltura (\_ -> 0)) tiro
---    | otherwise = quedaEnCero tiro
-
---laguna :: Int -> Obstaculo
---laguna largoLaguna tiro 
---    | (velocidad tiro > 80) && alturaEntre tiro =  cambiarAltura (div largoLaguna) tiro
---    | otherwise = quedaEnCero tiro
-
 alturaEntre :: Tiro -> Bool
 alturaEntre tiro = altura tiro >= 1 && altura tiro <= 5
-
---hoyo :: Obstaculo
---hoyo tiro 
---    |precision tiro > 95 && velocidadEntre tiro =quedaEnCero tiro
---    | otherwise = quedaEnCero tiro
 
 velocidadEntre :: Tiro -> Bool
 velocidadEntre tiro = velocidad tiro <=20 && velocidad tiro >= 5
 
 quedaEnCero :: Tiro -> Tiro
 quedaEnCero = cambiarVelocidad (\_ -> 0) . cambiarPrecision (\_ -> 0). cambiarAltura (\_ -> 0)
+-}
 
 --------------------4
 
-palosUtiles :: Jugador -> Obs -> [Palo]
-palosUtiles jugador obstaculo = filter (condicionFiltrar jugador obstaculo) palos
+palosUtiles :: Jugador -> Obstaculo -> [Palo]
+palosUtiles jugador obstaculo = filter (leSirveParaSuperar jugador obstaculo) palos
 
-condicionFiltrar :: Jugador -> Obs -> Palo -> Bool
-condicionFiltrar jugador obstaculo palo = pasaObstaculo obstaculo (golpe jugador palo)
+leSirveParaSuperar :: Jugador -> Obstaculo -> Palo -> Bool
+leSirveParaSuperar jugador obstaculo palo = puedeSuperar obstaculo (golpe jugador palo)
 
-cuantosSupero :: [Obs] -> Tiro -> Int
-cuantosSupero obstaculos tiro = length (supera obstaculos tiro)
+-------B
+cuantosSupero :: [Obstaculo] -> Tiro -> Int
+cuantosSupero [] tiro = 0
+cuantosSupero (x:xs) tiro 
+  |puedeSuperar x tiro = 1 + cuantosSupero xs (efectoLuegoDeSuperar x tiro)
+  |otherwise = 0
 
-supera :: [Obs] -> Tiro -> [Obs]
-supera [] _ = []
-supera (x:xs) tiro 
-    |pasaObstaculo x tiro = x : supera xs (modificarTiro x tiro)
-    |otherwise = []
+------------c
+paloMasUtil :: Jugador -> [Obstaculo] -> Palo
+paloMasUtil jugador obstaculos = maximoSegun (cuantosSupero obstaculos . golpe jugador) palos
 
-paloMasUtil :: Jugador -> [Obs] -> Palo
-paloMasUtil jugador obstaculos = foldl1 (maxObstaculos jugador obstaculos) palos 
-    
-maxSegun ()
+maximoSegun :: Ord b=> (a->b) -> [a] -> a
+maximoSegun f = foldl1 (mayorSegun f)
 
-buffMaximoAtaque = foldl1 (maxDePotenciar criterioDePersonaje personaje) buffs
+mayorSegun :: Ord x => (t->x)->(t->t->t)
+mayorSegun f a b
+  | f a > f b = a
+  | otherwise = b
 
-maxSegun (criterioDePersonaje . potenciar personaje)
-
-
-maxSegun f buff1 buff2
-  | f buff1 > f buff2 = buff1
-  | otherwise = buff2
-
---length (takeWhile (`pasaObstaculo` tiro) obstaculos)
 ------------------5
+jugadorDeTorneo = fst
+puntosGanados = snd
 
-type Puntos = Int
+padresQuePierden ::  [(Jugador, Puntos)] -> [String]
+padresQuePierden lista = (map (padre.jugadorDeTorneo) . filter (not.gano lista)) lista
+  
+gano ::[(Jugador, Puntos)]-> (Jugador, Puntos) -> Bool
+gano lista puntosDeUno = (all ((< puntosGanados puntosDeUno).puntosGanados) . filter (/= puntosDeUno)) lista
 
-padresQuePierden :: [(Jugador, Puntos)] -> [String]
-padresQuePierden [] = []
-padresQuePierden (x:xs) 
+  
+--map padre (map fst (filter (((foldl max 0 (map snd lista))/=).snd) lista))
